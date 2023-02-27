@@ -14,6 +14,7 @@ from .csvf import CSV
 from .pdf import PDF
 from .pmb import PMB
 from .tei import TEI
+from .jama import JAMA
 
 
 class Execute:
@@ -44,7 +45,7 @@ class Execute:
         )
 
     @staticmethod
-    def parse(path, source, extension, compress, config):
+    def parse(path, source, extension, compress, config, format=None):
         """
         Parses articles from file at path.
 
@@ -63,7 +64,9 @@ class Execute:
         with gzip.open(path, mode) if compress else open(
             path, mode, encoding="utf-8" if mode == "r" else None
         ) as stream:
-            if extension == "pdf":
+            if format=='jamaxml':
+                yield from JAMA.parse(stream, source)
+            elif extension == "pdf":
                 yield PDF.parse(stream, source)
             elif extension == "xml":
                 if source and source.lower().startswith("arxiv"):
@@ -76,7 +79,7 @@ class Execute:
                 yield from CSV.parse(stream, source)
 
     @staticmethod
-    def process(inputs, outputs):
+    def process(inputs, outputs, format=None):
         """
         Main worker process loop. Processes file paths stored in inputs and writes articles
         to outputs. Writes a final message upon completion.
@@ -91,7 +94,7 @@ class Execute:
             while not inputs.empty():
                 params = inputs.get()
 
-                for result in Execute.parse(*params):
+                for result in Execute.parse(*params, format=format):
                     outputs.put(result)
         finally:
             # Write message that process is complete
@@ -161,7 +164,7 @@ class Execute:
                 db.save(result)
 
     @staticmethod
-    def run(indir, url, config=None, replace=False):
+    def run(indir, url, config=None, replace=False, format=None):
         """
         Main execution method.
 
@@ -184,7 +187,7 @@ class Execute:
         # Start worker processes
         processes = []
         for _ in range(min(total, os.cpu_count())):
-            process = Process(target=Execute.process, args=(inputs, outputs))
+            process = Process(target=Execute.process, args=(inputs, outputs, format))
             process.start()
             processes.append(process)
 
