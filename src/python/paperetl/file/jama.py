@@ -12,6 +12,8 @@ from nltk.tokenize import sent_tokenize
 from ..schema.article import Article
 from ..text import Text
 
+CLEANR = re.compile("<.*?>")
+
 
 class JAMA:
     """
@@ -31,13 +33,20 @@ class JAMA:
 
         # Parse XML
         soup = BeautifulSoup(stream, features="xml")
-        
+
         # Each file is a single article
 
         for entry in soup.find_all("article"):
             reference = JAMA.get(entry, "article-id")
-            title = JAMA.get(entry, "title")
+            title = JAMA.get(entry, "article-title")
             published = JAMA.get(entry, "pub-date")
+            try:
+                yr = published[-4:]
+                mo = published[3:-4]
+                day = published[:2]
+                published = parser.parse(f"{yr}-{mo}-{day}")
+            except ArithmeticError:
+                published = None
             updated = None
 
             # Derive uid
@@ -47,16 +56,21 @@ class JAMA:
             journal = JAMA.get(entry, "journal-title")
 
             # Get authors
-            authors, affiliations = JAMA.authors(entry.find_all("contrib-group"), entry.find_all("aff"))
-
-            # Get tags
-            tags = "; ".join(
-                ["JAMA"]
-                + [category.get("term") for category in entry.find_all("category")]
+            authors, affiliations = JAMA.authors(
+                entry.find_all("contrib-group"), entry.find_all("aff")
             )
 
+            # Get tags
+            tags = []
+            for cats in entry.find_all("article-categories"):
+                tags += cats.find_all("subject")
+
+            tags = [re.sub(CLEANR, "", x.text) for x in tags if x is not None]
+            tags = "; ".join(["JAMA"] + tags)
+            abstract = entry.abstract
+            body = entry.body
             # Transform section text
-            sections = JAMA.sections(title, JAMA.get(entry, "summary"))
+            sections = JAMA.sections(title, abstract=abstract, body=body)
 
             # Article metadata - id, source, published, publication, authors, affiliations, affiliation, title,
             #                    tags, reference, entry date
@@ -122,7 +136,7 @@ class JAMA:
 
         authors = []
         affiliations = [] if affiliations is None else affiliations
-        CLEANR = re.compile('<.*?>') 
+
         for group in elements:
             # Create authors as lastname, firstname
             for author in group.find_all("contrib"):
@@ -138,25 +152,64 @@ class JAMA:
         )
 
     @staticmethod
-    def sections(title, text):
+    def sections(title, abstract, body):
         """
-        Gets a list of sections for this article.
+        Gets a list of sections for this article. This method supports the following three abstract formats:
+           - Raw text
+           - HTML formatted text
+           - Abstract text parsed into section named elements
+
+        All three formats return sections that are tokenized into sentences.
 
         Args:
+            article: article element
             title: title string
-            text: summary text
 
         Returns:
             list of sections
         """
 
-        # Add title
-        sections = [("TITLE", title)]
+        sections = [("TITLE", title)] if title else []
+        try:
+            for sec in abstract.find_all("sec"):
+                sections += [
+                    (
+                        "ABSTRACT\\" + sec.title.text,
+                        " ".join([x.text for x in sec.find_all("p")]),
+                    )
+                ]
+        except AttributeError:
+            pass
 
-        # Transform and clean text
-        text = Text.transform(text)
-
-        # Split text into sentences, transform text and add to sections
-        sections.extend([("ABSTRACT", x) for x in sent_tokenize(text)])
+        
+        for sec in body.find_all("sec", recursive=False):
+            subsections = sec.find_all("sec")
+            if len(subsections) == 0:
+                sections += [
+                    (
+                        sec.title.text.upper(),
+                        x
+                    )
+                    for x in sent_tokenize(
+                            Text.transform(
+                                " ".join([x.text for x in sec.find_all("p")])
+                            )
+                        )
+                    
+                ]
+            else:
+                for ssec in subsections:
+                    sections += [
+                        (
+                            f"{sec.title.text.upper()}\\{ssec.title.text.upper()}",
+                            x
+                        )
+                        for x in sent_tokenize(
+                                Text.transform(
+                                    " ".join([x.text for x in ssec.find_all("p")])
+                                )
+                            )
+                        
+                    ]
 
         return sections
