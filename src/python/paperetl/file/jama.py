@@ -70,7 +70,7 @@ class JAMA:
             abstract = entry.abstract
             body = entry.body
             # Transform section text
-            sections = JAMA.sections(title, abstract=abstract, body=body)
+            sections = JAMA.sections(title, abstract=abstract, body=body, paragraphs=True)
 
             # Article metadata - id, source, published, publication, authors, affiliations, affiliation, title,
             #                    tags, reference, entry date
@@ -152,7 +152,7 @@ class JAMA:
         )
 
     @staticmethod
-    def sections(title, abstract, body):
+    def sections(title, abstract, body, paragraphs=False):
         """
         Gets a list of sections for this article. This method supports the following three abstract formats:
            - Raw text
@@ -181,35 +181,50 @@ class JAMA:
         except AttributeError:
             pass
 
-        
         for sec in body.find_all("sec", recursive=False):
             subsections = sec.find_all("sec")
             if len(subsections) == 0:
-                sections += [
-                    (
-                        sec.title.text.upper(),
-                        x
-                    )
-                    for x in sent_tokenize(
-                            Text.transform(
-                                " ".join([x.text for x in sec.find_all("p")])
-                            )
-                        )
-                    
-                ]
-            else:
-                for ssec in subsections:
+                if not paragraphs:
                     sections += [
                         (
-                            f"{sec.title.text.upper()}\\{ssec.title.text.upper()}",
+                            sec.title.text.upper(),
                             x
                         )
                         for x in sent_tokenize(
                                 Text.transform(
-                                    " ".join([x.text for x in ssec.find_all("p")])
+                                    " ".join([x.text for x in sec.find_all("p")])
                                 )
                             )
                         
                     ]
+                else:
+                    sections += [
+                        (
+                            sec.title.text.upper(),
+                            x.text
+                        ) for x in sec.find_all("p")
+                    ]
+            else:
+                for ssec in subsections:
+                    if not paragraphs:
+                        sections += [
+                            (
+                                f"{sec.title.text.upper()}\\{ssec.title.text.upper()}",
+                                x
+                            )
+                            for x in sent_tokenize(
+                                    Text.transform(
+                                        " ".join([x.text for x in ssec.find_all("p")])
+                                    )
+                                )
+                            
+                        ]
+                    else:
+                        sections += [
+                            (
+                                f"{sec.title.text.upper()}\\{ssec.title.text.upper()}",
+                                x.text 
+                            ) for x in ssec.find_all("p")
+                        ]
 
         return sections

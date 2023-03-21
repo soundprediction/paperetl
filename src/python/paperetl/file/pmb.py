@@ -316,7 +316,8 @@ class PMB:
         text = Text.transform(PMB.text(element))
 
         # No embedded sections
-        return [("ABSTRACT", x) for x in sent_tokenize(text)]
+        return [("ABSTRACT", text)]
+        # return [("ABSTRACT", x) for x in sent_tokenize(text)]
 
     @staticmethod
     def formatted(element):
@@ -411,9 +412,9 @@ class PMB:
             if element.text:
                 # Transform and clean text
                 text = Text.transform(PMB.text(element))
-
+                sections.extend([(name, text)])
                 # Split text into sentences, transform text and add to sections
-                sections.extend([(name, x) for x in sent_tokenize(text)])
+                # sections.extend([(name, x) for x in sent_tokenize(text)])
 
         return sections
 
